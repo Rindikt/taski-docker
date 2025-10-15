@@ -1,0 +1,45 @@
+version: '3.8'
+
+volumes:
+  pg_data:
+  static:
+
+services:
+  db:
+    image: postgres:13.10
+    env_file: .env
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend/
+    env_file: .env
+    depends_on:
+      - db
+    volumes:
+      - static:/backend_static
+    # ДОБАВЛЕНО: Проверка здоровья. Требуется, чтобы Nginx ждал готовности бэкенда.
+    healthcheck:
+      test: ["CMD", "curl", "http://localhost:8000/", "-s"] # Проверьте путь, который отвечает 200 ОК
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    env_file: .env
+    build: ./frontend/
+    command: cp -r /app/build/. /frontend_static/
+    volumes:
+      - static:/frontend_static
+
+  gateway:
+    build: ./gateway/
+    env_file: .env
+    volumes:
+      - static:/staticfiles
+    ports:
+      - 8000:80 # 8000 на хосте -> 80 в контейнере Nginx
+    # ИСПРАВЛЕНО: Зависимость от готовности бэкенда
+    depends_on:
+      backend:
+        condition: service_healthy # Ждать, пока бэкенд не пройдет healthcheck
